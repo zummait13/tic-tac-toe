@@ -11,6 +11,8 @@ function Gameboard() {
         }
     }
 
+    const getBoard = () => board;
+
     function Cell() {
         let value = '_';
 
@@ -79,7 +81,13 @@ function Gameboard() {
         return "continue round";
     }
 
-    return {printBoard, makeMove, checkWinStatus, clearBoard};
+    return {
+        getBoard,
+        printBoard,
+        makeMove,
+        checkWinStatus,
+        clearBoard
+    };
 }
 
 function player(token) {
@@ -88,91 +96,170 @@ function player(token) {
     const getToken = () => token;
     const getCounter = () => counter;
     const addCounter = () => counter++;
+    const setToNull = () => {
+        counter = 0;
+        return counter;
+    }
 
-    return {getToken, getCounter, addCounter};
+    return {getToken, getCounter, addCounter, setToNull};
 }
 
-const startGame = (function GameController() {
-    let numbOfRoundsToWin = 2;
+function GameController() {
 
     const board = Gameboard();
 
     const player1 = player("O");
     const player2 = player("X");
     let activePlayer = player1;
+    let winner = {};
 
-    let currentMove = {
-        row: 1,
-        col: 1,
-        token: "_"
-    }
+    let numbOfRoundsToWin = 2;
+    let gameEndStatus = 0;
 
-    const playWholeGame = (function playWholeGame() {
-        let numbOfRound = 0;
-        do {
-            numbOfRound++;
-            console.log(`Round ${numbOfRound}`);
-            playRound();
-            // console.log(player1.getCounter(), player2.getCounter());
-        } while(player1.getCounter() < numbOfRoundsToWin && player2.getCounter() < numbOfRoundsToWin);
-
-        console.log(`${activePlayer.getToken()} WINS IN WHOLE GAME`);
-    })();
-
-    function playRound() {
+    function playRound(row, col) {
 
         let winStatus = '';
 
-        board.printBoard();
+        let currentMove = {
+            row: row,
+            col: col,
+            token: activePlayer.getToken()
+        }
 
         do {
-            makeMove();
-            winStatus = board.checkWinStatus(currentMove);
-            board.printBoard();
+            // check availability
+            let moveResult = board.makeMove(currentMove);
+            if (moveResult == "it's already taken") {
+                console.log(moveResult);
+                return;
+            }
+            
+            winStatus = board.checkWinStatus(currentMove); // result is "it's tie", "wins" or "continue round"
             console.log(winStatus);
             if (winStatus == "continue round") switchPlayerTurn();
         } while (winStatus == "continue round");
 
+        // check win status
         if (winStatus == "wins") {
             activePlayer.addCounter();
             console.log(activePlayer.getToken() + " " + winStatus);
         }
-        else if (winStatus == "it's tie") console.log(winStatus);
+        else if (winStatus == "it's tie") alert(winStatus);
 
+        if (player1.getCounter() == numbOfRoundsToWin || player2.getCounter() == numbOfRoundsToWin) {
+            gameEndStatus = 1;
+            winner = (player1.getCounter > player2.getCounter) ? player2 : player1;
+
+            player1.setToNull();
+            player2.setToNull();
+            activePlayer = player1;
+            board.clearBoard();
+            console.log(winner, player1.getCounter());
+        }
+        
         console.log(`Player ${player1.getToken()}: ${player1.getCounter()} scores`);
         console.log(`Player ${player2.getToken()}: ${player2.getCounter()} scores`);
 
         board.clearBoard();
+
+        function switchPlayerTurn() {
+            activePlayer = activePlayer === player1 ? player2 : player1;
+            console.log(`${activePlayer.getToken()} your turn`);
+        }
     }
 
-    function makeMove() {
-        do {
-            [currentMove.row, currentMove.col] = getMoveFromUser();
-            currentMove.token = activePlayer.getToken();
+    let resetGameEndStatus = () => {
+        gameEndStatus = 0;
+    }
 
-            resOfMove = board.makeMove(currentMove);
-            console.log(resOfMove);
-        } while (resOfMove == "it's already taken");
+    let getActivePlayer = () => activePlayer;
+    let getPlayer1 = () => player1;
+    let getPlayer2 = () => player2;
+    let getGameEndStatus = () => gameEndStatus;
+    let getWinner = () => winner;
+
+    return {
+        getActivePlayer,
+        getPlayer1,
+        getPlayer2,
+        playRound,
+        getGameEndStatus,
+        getWinner,
+        resetGameEndStatus,
+        getBoard: board.getBoard
+    };
+};
+
+const startGame = (function screenController() {
+    
+    const game = GameController();
+    const playerTurnDiv = document.querySelector(".turn");
+    const player1ScoreDiv = document.querySelector(".player1-score");
+    const player2ScoreDiv = document.querySelector(".player2-score");
+    const boardDiv = document.querySelector(".board");
+
+    const updateScreen = () => {
+        // clear the board
+        boardDiv.textContent = "";
+
+        let activePlayer = game.getActivePlayer();
+        playerTurnDiv.textContent = `Turn ${activePlayer.getToken()}`;
+
+        let player1 = game.getPlayer1();
+        player1ScoreDiv.textContent = `Player ${player1.getToken()}: ${player1.getCounter()} scores`;
+        let player2 = game.getPlayer2();
+        player2ScoreDiv.textContent = `Player ${player2.getToken()}: ${player2.getCounter()} scores`;
+
+        const board = game.getBoard();
+
+        board.forEach((row, rowIndex) => {
+            row.forEach((cell, columnIndex) => {
+                const cellButton = document.createElement("button");
+                cellButton.classList.add("cell");
+
+                // this needs to identify row and column in playWholeGame()
+                cellButton.dataset.row = rowIndex;
+                cellButton.dataset.column = columnIndex;
+
+                cellButton.textContent = cell.getValue();
+                boardDiv.appendChild(cellButton);
+            })
+        })
+    }
+
+    function clickHandlerBoard(e) {
+        const selectedColumn = e.target.dataset.column;
+        const selectedRow = e.target.dataset.row;
+        // Make sure I've clicked a column and not the gaps in between
+        if (!selectedColumn && !selectedRow) return;
+
+        game.playRound(selectedRow, selectedColumn);
         
+        checkGameEndStatus();
+        updateScreen();
+    }
+    boardDiv.addEventListener("click", clickHandlerBoard);
+
+    function checkGameEndStatus() {
+        const gameEndStatus = game.getGameEndStatus();
+        if (gameEndStatus == 1) {
+            dialogWindow.show();
+            boardDiv.textContent = '';
+            player1ScoreDiv.textContent = '';
+            player2ScoreDiv.textContent = '';
+
+            winnerTextDiv.textContent = `${game.getWinner().getToken()} WINS THE WHOLE GAME`;
+        }
     }
 
-    function getMoveFromUser() {
-        do {
-            const row = prompt("Choose row");
-            if (row < 1 || row > 3) alert("Row should be between 1 and 3");
-        } while (row < 1 || row > 3);
+    const dialogWindow = document.querySelector("dialog");
+    const winnerTextDiv = document.querySelector(".player-win");
+    const newGameBtn = document.querySelector(".new-game");
+    newGameBtn.addEventListener("click", () => {
+        dialogWindow.close();
+        game.resetGameEndStatus();
+    });
 
-        do {
-            const col = prompt("Choose column");
-            if (col < 1 || col > 3) alert("Column should be between 1 and 3");
-        } while (col < 1 || col > 3);
-        
-        return [+row-1, +col-1];
-    }
-
-    function switchPlayerTurn() {
-        activePlayer = activePlayer === player1 ? player2 : player1;
-        console.log(`${activePlayer.getToken()} your turn`);
-    }
+    updateScreen();
 })();
 
